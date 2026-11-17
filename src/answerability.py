@@ -1,6 +1,7 @@
 
 import json
 import re
+import time
 
 from google.genai import errors
 
@@ -14,6 +15,8 @@ VALID_DECISIONS = {
     "CONTRADICTED"
 }
 
+MAX_RETRIES = 3
+
 
 def verification_error(reason):
     return {
@@ -23,14 +26,35 @@ def verification_error(reason):
     }
 
 
-def verify_evidence(query, retrieved_chunks):
-    """
-    Verify whether retrieved evidence supports the question
-    and identify the exact evidence chunks.
+def call_gemini(prompt):
+    """Call Gemini with retries for transient failures."""
 
-    Evidence IDs are 1-based indices corresponding to the
-    retrieved_chunks list.
-    """
+    for attempt in range(MAX_RETRIES):
+        try:
+            return client.models.generate_content(
+                model=GENERATION_MODEL,
+                contents=prompt
+            )
+
+        except errors.APIError:
+            raise
+
+        except Exception:
+            if attempt == MAX_RETRIES - 1:
+                raise
+
+            delay = 2 ** attempt
+
+            print(
+                f"Verification connection failed. "
+                f"Retrying in {delay} seconds..."
+            )
+
+            time.sleep(delay)
+
+
+def verify_evidence(query, retrieved_chunks):
+    """Verify evidence and identify supporting or contradicting sources."""
 
     if not query or not query.strip():
         raise ValueError("Query cannot be empty")
@@ -66,7 +90,7 @@ You are an evidence verification system for a
 retrieval-augmented question answering application.
 
 Determine whether the provided document evidence
-supports the specific information requested.
+supports or contradicts the specific information requested.
 
 Do not answer the question.
 
@@ -122,24 +146,22 @@ USER QUESTION:
 """
 
     try:
-        response = client.models.generate_content(
-            model=GENERATION_MODEL,
-            contents=prompt
-        )
+        response = call_gemini(prompt)
 
     except errors.APIError as error:
         print(f"Gemini verification API error: {error}")
         return verification_error(
-            "The verification service is temporarily unavailable."
+            "The verification service is temporarily unavailable. "
+            "Check API quota and model availability."
         )
 
     except Exception as error:
         print(f"Unexpected verification error: {error}")
         return verification_error(
-            "An unexpected error occurred during verification."
+            "The verification service could not establish a connection."
         )
 
-    if not response.text:
+    if not response or not response.text:
         return verification_error(
             "The verification model returned an empty response."
         )
@@ -163,10 +185,10 @@ USER QUESTION:
             "The verification model returned invalid JSON."
         )
 
-    json_text = response_text[json_start:json_end + 1]
-
     try:
-        result = json.loads(json_text)
+        result = json.loads(
+            response_text[json_start:json_end + 1]
+        )
 
     except json.JSONDecodeError:
         return verification_error(
@@ -199,7 +221,6 @@ USER QUESTION:
             "The verification response contained invalid evidence IDs."
         )
 
-    # Validate every evidence ID.
     for evidence_id in evidence_ids:
         if (
             isinstance(evidence_id, bool)
@@ -224,8 +245,14 @@ USER QUESTION:
 
     if decision == "NOT_SUPPORTED" and evidence_ids:
         return verification_error(
-            "The model returned evidence IDs for a "
-            "NOT_SUPPORTED decision."
+            "The verification model returned evidence IDs "
+            "for a NOT_SUPPORTED decision."
+        )
+
+    if decision == "CONTRADICTED" and not evidence_ids:
+        return verification_error(
+            "The model marked the claim as contradicted "
+            "without identifying contradictory evidence."
         )
 
     return {

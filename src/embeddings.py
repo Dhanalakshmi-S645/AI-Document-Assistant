@@ -1,20 +1,17 @@
-import hashlib
+
 import os
 import time
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai import errors
 
 
 load_dotenv()
 
 api_key = os.getenv("GEMINI_API_KEY")
-print(
-    "GEMINI_KEY_FINGERPRINT:",
-    hashlib.sha256(api_key.encode()).hexdigest()[:12]
-    if api_key else "MISSING"
-)
+
 if not api_key:
     raise ValueError(
         "GEMINI_API_KEY not found in environment variables"
@@ -25,13 +22,42 @@ client = genai.Client(api_key=api_key)
 EMBEDDING_MODEL = "gemini-embedding-001"
 BATCH_SIZE = 100
 BATCH_DELAY = 65
+MAX_RETRIES = 3
+
+
+def call_embedding_api(contents, task_type):
+    """Call Gemini embeddings with limited retries."""
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            return client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=contents,
+                config=types.EmbedContentConfig(
+                    task_type=task_type
+                )
+            )
+
+        except errors.APIError:
+            # Includes quota errors. Do not retry blindly.
+            raise
+
+        except Exception as error:
+            if attempt == MAX_RETRIES - 1:
+                raise
+
+            delay = 2 ** attempt
+
+            print(
+                f"Embedding connection failed: {error}. "
+                f"Retrying in {delay} seconds..."
+            )
+
+            time.sleep(delay)
 
 
 def embed_documents(texts):
-    """
-    Generate document embeddings in batches while
-    respecting the Gemini free-tier rate limit.
-    """
+    """Generate document embeddings in batches."""
 
     if not texts:
         raise ValueError("No text provided for embedding")
@@ -39,7 +65,6 @@ def embed_documents(texts):
     all_embeddings = []
 
     for start in range(0, len(texts), BATCH_SIZE):
-
         batch = texts[start:start + BATCH_SIZE]
 
         print(
@@ -47,12 +72,9 @@ def embed_documents(texts):
             f"to {start + len(batch)}"
         )
 
-        response = client.models.embed_content(
-            model=EMBEDDING_MODEL,
+        response = call_embedding_api(
             contents=batch,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT"
-            )
+            task_type="RETRIEVAL_DOCUMENT"
         )
 
         batch_embeddings = [
@@ -71,11 +93,10 @@ def embed_documents(texts):
             f"Embedded {len(all_embeddings)}/{len(texts)} chunks"
         )
 
-        # Wait before sending the next batch
         if start + BATCH_SIZE < len(texts):
             print(
                 f"Waiting {BATCH_DELAY} seconds "
-                "for the API rate limit to reset..."
+                "before the next batch..."
             )
             time.sleep(BATCH_DELAY)
 
@@ -83,19 +104,17 @@ def embed_documents(texts):
 
 
 def embed_query(query):
-    """
-    Generate an embedding for a search query.
-    """
+    """Generate an embedding for a search query."""
 
     if not query or not query.strip():
         raise ValueError("Query cannot be empty")
 
-    response = client.models.embed_content(
-        model=EMBEDDING_MODEL,
+    response = call_embedding_api(
         contents=query,
-        config=types.EmbedContentConfig(
-            task_type="RETRIEVAL_QUERY"
-        )
+        task_type="RETRIEVAL_QUERY"
     )
+
+    if not response.embeddings:
+        raise ValueError("Gemini returned no query embedding")
 
     return response.embeddings[0].values
