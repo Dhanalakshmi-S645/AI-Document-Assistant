@@ -1,6 +1,15 @@
-
+import os
 import streamlit as st
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+try:
+    cloud_api_key = st.secrets["GEMINI_API_KEY"]
+    os.environ["GEMINI_API_KEY"] = cloud_api_key
+except (FileNotFoundError, KeyError):
+    pass
 
 from src.store import store_pdf
 from src.retrieval import search_hybrid
