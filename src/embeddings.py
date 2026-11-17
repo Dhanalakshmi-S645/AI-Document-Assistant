@@ -1,4 +1,4 @@
-
+import hashlib
 import os
 import time
 
@@ -10,7 +10,11 @@ from google.genai import types
 load_dotenv()
 
 api_key = os.getenv("GEMINI_API_KEY")
-
+print(
+    "GEMINI_KEY_FINGERPRINT:",
+    hashlib.sha256(api_key.encode()).hexdigest()[:12]
+    if api_key else "MISSING"
+)
 if not api_key:
     raise ValueError(
         "GEMINI_API_KEY not found in environment variables"
