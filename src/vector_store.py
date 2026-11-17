@@ -2,21 +2,19 @@
 import chromadb
 
 
-# Initialize persistent ChromaDB client
 client = chromadb.PersistentClient(
     path="./chroma_db"
 )
 
-
-# Create or retrieve our document collection
 collection = client.get_or_create_collection(
-    name="documents",
-    metadata={"hnsw:space": "cosine"}
+    name="documents_minilm",
+    metadata={
+        "hnsw:space": "cosine",
+        "embedding_model": "all-MiniLM-L6-v2"
+    }
 )
 
 
 def get_collection():
-    """
-    Return the ChromaDB document collection.
-    """
+    """Return the document collection."""
     return collection

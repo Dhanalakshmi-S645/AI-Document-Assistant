@@ -232,6 +232,7 @@ if ask_button:
                     for evidence_id in verification["evidence_ids"]
                     if (
                         isinstance(evidence_id, int)
+                        and not isinstance(evidence_id, bool)
                         and 1 <= evidence_id <= len(retrieved_chunks)
                     )
                 ]
@@ -321,19 +322,20 @@ if ask_button:
 
                         if not (
                             isinstance(evidence_id, int)
+                            and not isinstance(evidence_id, bool)
                             and 1 <= evidence_id <= len(retrieved_chunks)
                         ):
                             continue
 
                         chunk = retrieved_chunks[evidence_id - 1]
-                        metadata = chunk["metadata"]
+                        metadata = chunk.get("metadata", {})
 
                         st.success(
-                            f"{metadata.get('filename')} "
-                            f"— Page {metadata.get('page')}"
+                            f"{metadata.get('filename', 'Unknown')} "
+                            f"— Page {metadata.get('page', 'Unknown')}"
                         )
 
-                        st.write(chunk["text"])
+                        st.write(chunk.get("text", ""))
 
 
                 # -----------------------------------
@@ -347,32 +349,34 @@ if ask_button:
                         start=1
                     ):
 
-                        metadata = chunk["metadata"]
+                        metadata = chunk.get("metadata", {})
 
                         st.markdown(
                             f"**Evidence {index}** — "
-                            f"{metadata.get('filename')} "
-                            f"(Page {metadata.get('page')})"
+                            f"{metadata.get('filename', 'Unknown')} "
+                            f"(Page {metadata.get('page', 'Unknown')})"
                         )
 
-                        if "rrf_score" in chunk:
+                        rrf_score = chunk.get("rrf_score")
+                        adjusted_score = chunk.get("adjusted_score")
+
+                        if rrf_score is not None:
 
                             st.caption(
-                                f"RRF score: {chunk['rrf_score']:.6f}"
+                                f"RRF score: {rrf_score:.6f}"
                             )
 
-                        elif "adjusted_score" in chunk:
+                        elif adjusted_score is not None:
 
                             st.caption(
-                                "BM25 adjusted score: "
-                                f"{chunk['adjusted_score']:.6f}"
+                                f"BM25 adjusted score: {adjusted_score:.6f}"
                             )
 
                         else:
 
                             st.caption("Retrieval score unavailable.")
 
-                        st.write(chunk["text"])
+                        st.write(chunk.get("text", ""))
 
                         st.divider()
 

@@ -4,8 +4,7 @@ import re
 import time
 
 from google.genai import errors
-
-from src.embeddings import client
+from src.gemini_client import client
 from src.generation import GENERATION_MODEL
 
 

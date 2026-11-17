@@ -3,7 +3,7 @@ import time
 
 from google.genai import errors
 
-from src.embeddings import client
+from src.gemini_client import client
 
 
 GENERATION_MODEL = "gemini-3.5-flash-lite"
